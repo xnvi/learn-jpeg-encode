@@ -98,7 +98,7 @@ const uint8_t default_ht_luma_ac_len[16] =
     0,2,1,3,3,2,4,3,5,5,4,4,0,0,1,0x7d
 };
 
-const uint8_t default_ht_luma_ac[] =
+const uint8_t default_ht_luma_ac[162] =
 {
     0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12, 0x21, 0x31, 0x41, 0x06, 0x13, 0x51, 0x61, 0x07,
     0x22, 0x71, 0x14, 0x32, 0x81, 0x91, 0xA1, 0x08, 0x23, 0x42, 0xB1, 0xC1, 0x15, 0x52, 0xD1, 0xF0,
@@ -118,7 +118,7 @@ const uint8_t default_ht_chroma_ac_len[16] =
     0,2,1,2,4,4,3,4,7,5,4,4,0,1,2,0x77
 };
 
-const uint8_t default_ht_chroma_ac[] =
+const uint8_t default_ht_chroma_ac[162] =
 {
     0x00, 0x01, 0x02, 0x03, 0x11, 0x04, 0x05, 0x21, 0x31, 0x06, 0x12, 0x41, 0x51, 0x07, 0x61, 0x71,
     0x13, 0x22, 0x32, 0x81, 0x08, 0x14, 0x42, 0x91, 0xA1, 0xB1, 0xC1, 0x09, 0x23, 0x33, 0x52, 0xF0,
@@ -141,6 +141,7 @@ typedef struct
     uint16_t code_word;
 } coefficients;
 
+// 参考JFIF标准 ITU-T T.871
 typedef struct __attribute__((packed))
 {
     uint16_t len;
@@ -151,7 +152,24 @@ typedef struct __attribute__((packed))
     uint16_t Vdensity;
     uint8_t  HthumbnailA;
     uint8_t  VthumbnailA;
-} JFIF_Header;
+} jfif_header;
+
+typedef struct __attribute__((packed))
+{
+    uint8_t id; // 颜色分量ID
+    uint8_t sampling_factors; // 水平/垂直采样因子，高4位水平采样因子，低4位垂直采样因子
+    uint8_t qt_table_id; // 量化表的ID
+} color_component;
+
+typedef struct __attribute__((packed))
+{
+    uint8_t         precision; // 图像的采样精度，常用8位
+    uint16_t        height; // 图像高度
+    uint16_t        width; // 图像宽度
+    uint8_t         component_num; // 角色分量数，YUV一共3个分量
+    color_component component[3]; // 颜色分量
+} frame_header;
+
 
 
 int32_t read_bmp_to_rgb888(char *path, uint8_t **data, int32_t *width, int32_t *height);
@@ -159,19 +177,23 @@ void rgb888_dump_bmp(char *path, uint8_t *data, int32_t width, int32_t height);
 void rgb888_dump_ppm(char *path, uint8_t *data, int32_t width, int32_t height);
 
 int32_t read_block(const uint8_t *rgb, uint8_t *block, int32_t w, int32_t h, int32_t x, int32_t y);
-int32_t block_rgb_to_yuv444(const uint8_t *block, uint8_t *y, uint8_t *u, uint8_t *v);
-int32_t block_dct(const uint8_t *in, double *out);
+// int32_t block_rgb_to_yuv444(const uint8_t *block, uint8_t *y, uint8_t *u, uint8_t *v);
+// int32_t block_dct(const uint8_t *in, double *out);
+int32_t block_rgb_to_yuv444(const uint8_t *block, int8_t *y, int8_t *u, int8_t *v);
+int32_t block_dct(const int8_t *in, double *out);
 int32_t block_quantization(const uint8_t *table, const double *in, int32_t *out);
 int32_t block_zigzag(int32_t *in, int32_t *out);
+int32_t block_encode(int32_t *in, int32_t *last_dc, coefficients *dc, coefficients *ac);
 int32_t huffman_encode();
 int32_t make_qt_table(int32_t qt, const uint8_t *in, uint8_t *out);
 int32_t make_huffman_tree(uint8_t *code_length, uint8_t *raw_val, int32_t out_len, coefficients *out);
-int32_t jpeg_write_head();
-int32_t jpeg_write_data();
-int32_t jpeg_write_end();
 
+double ck(int32_t k);
+int32_t get_val_bit_and_code(int32_t value, uint16_t *bit_num, uint16_t *code);
+
+uint16_t sw16(uint16_t dat);
 int32_t jpeg_write_file(uint8_t *data, int32_t len);
-int32_t jpeg_write_bits(uint32_t data, int32_t len);
+int32_t jpeg_write_bits(uint32_t data, int32_t len, int32_t flush);
 int32_t jpeg_write_u8(uint8_t data);
 int32_t jpeg_write_u16(uint16_t data);
 int32_t jpeg_write_u32(uint32_t data);
@@ -181,9 +203,32 @@ int32_t jpeg_write_file(uint8_t *data, int32_t len)
     return fwrite(data, 1, len, fp_jpeg);
 }
 
-int32_t jpeg_write_bits(uint32_t data, int32_t len)
+int32_t jpeg_write_bits(uint32_t data, int32_t len, int32_t flush)
 {
-    // TODO
+    static uint32_t bit_ptr = 0; // 与平时阅读习惯相反，最高位计为0，最低位计为31
+    static uint32_t bitbuf = 0x00000000;
+    uint8_t w = 0x00;
+
+    bitbuf |= data << (32 - bit_ptr - len);
+    bit_ptr += len;
+
+    while (bit_ptr >= 8)
+    {
+        w = (uint8_t)((bitbuf & 0xFF000000) >> 24);
+        jpeg_write_u8(w);
+        if (w == 0xFF)
+        {
+            jpeg_write_u8(0x00);
+        }
+        bitbuf <<= 8;
+        bit_ptr -= 8;
+    }
+
+    if (flush)
+    {
+        w = (uint8_t)((bitbuf & 0xFF000000) >> 24);
+        jpeg_write_u8(w);
+    }
     return 0;
 }
 
@@ -224,7 +269,8 @@ double ck(int32_t k)
     }
 }
 
-int32_t block_dct(const uint8_t *in, double *out)
+// int32_t block_dct(const uint8_t *in, double *out)
+int32_t block_dct(const int8_t *in, double *out)
 {
     int32_t i, j, n, m;
     double sum = 0.0;
@@ -289,8 +335,8 @@ int32_t read_block(const uint8_t *rgb, uint8_t *block, int32_t w, int32_t h, int
 
 // YUV有BT601、BT709、BT2020
 // jpeg 使用的yuv公式 https://en.wikipedia.org/wiki/YCbCr
-// 参考JFIF标准
-int32_t block_rgb_to_yuv444(const uint8_t *block, uint8_t *y, uint8_t *u, uint8_t *v)
+// 参考JFIF标准 ITU-T T.871
+int32_t block_rgb_to_yuv444(const uint8_t *block, int8_t *y, int8_t *u, int8_t *v)
 {
     uint8_t r, g, b;
     int32_t dx, dy;
@@ -305,12 +351,21 @@ int32_t block_rgb_to_yuv444(const uint8_t *block, uint8_t *y, uint8_t *u, uint8_
             r = block[block_offset * 3 + 0];
             g = block[block_offset * 3 + 1];
             b = block[block_offset * 3 + 2];
-            luma = 0.299f   * r + 0.587f  * g + 0.114f  * b;
-            cb   = -0.1687f * r - 0.3313f * g + 0.5f    * b + 128.0f;
-            cr   = 0.5f     * r - 0.4187f * g - 0.0813f * b + 128.0f;
-            y[block_offset] = (uint8_t)luma;
-            u[block_offset] = (uint8_t)cb;
-            v[block_offset] = (uint8_t)cr;
+            // luma = 0.299f   * r + 0.587f  * g + 0.114f  * b;
+            // cb   = -0.1687f * r - 0.3313f * g + 0.5f    * b + 128.0f;
+            // cr   = 0.5f     * r - 0.4187f * g - 0.0813f * b + 128.0f;
+            // y[block_offset] = (uint8_t)luma;
+            // u[block_offset] = (uint8_t)cb;
+            // v[block_offset] = (uint8_t)cr;
+            luma = 0.299f   * r + 0.587f  * g + 0.114f  * b - 128;
+            cb   = -0.1687f * r - 0.3313f * g + 0.5f    * b;
+            cr   = 0.5f     * r - 0.4187f * g - 0.0813f * b;
+            // y[block_offset] = (int8_t)round(luma);
+            // u[block_offset] = (int8_t)round(cb);
+            // v[block_offset] = (int8_t)round(cr);
+            y[block_offset] = (int8_t)luma;
+            u[block_offset] = (int8_t)cb;
+            v[block_offset] = (int8_t)cr;
         }
     }
     return 0;
@@ -409,6 +464,57 @@ int32_t block_zigzag(int32_t *in, int32_t *out)
     }
 }
 
+int32_t block_encode(int32_t *in, int32_t *last_dc, coefficients *dc, coefficients *ac)
+{
+    int32_t i;
+    int32_t dc_delta = 0;
+    uint16_t bit_num, code;
+    int32_t last_not_zero_cnt = 0;
+    int32_t zero_cnt = 0;
+    uint8_t run_size = 0;
+    
+    // 直流
+    dc_delta = in[0] - *last_dc;
+    *last_dc = in[0];
+    get_val_bit_and_code(dc_delta, &bit_num, &code);
+    jpeg_write_bits(dc[bit_num].code_word, dc[bit_num].code_length, 0);
+    jpeg_write_bits(code, bit_num, 0);
+
+    // 交流
+    for (i = 63; i > 0; i--)
+    {
+        if (in[i] != 0)
+        {
+            last_not_zero_cnt = i;
+            break;
+        }
+    }
+
+    for (i = 1; i <= last_not_zero_cnt; i++)
+    {
+        zero_cnt = 0;
+        while (in[i] == 0)
+        {
+            zero_cnt++;
+            i++;
+            if (zero_cnt == 16)
+            {
+                jpeg_write_bits(ac[0xF0].code_word, ac[0xF0].code_length, 0);
+                zero_cnt = 0;
+            }
+        }
+
+        get_val_bit_and_code(in[i], &bit_num, &code);
+        run_size = zero_cnt << 4 | bit_num;
+        jpeg_write_bits(ac[run_size].code_word, ac[run_size].code_length, 0);
+        jpeg_write_bits(code, bit_num, 0);
+    }
+    if (last_not_zero_cnt != 63)
+    {
+        jpeg_write_bits(ac[0].code_word, ac[0].code_length, 0);
+    }
+}
+
 int32_t get_val_bit_and_code(int32_t value, uint16_t *bit_num, uint16_t *code)
 {
     // 计算方法：正数不变，负数则计算它绝对值的反码
@@ -444,6 +550,8 @@ int32_t get_val_bit_and_code(int32_t value, uint16_t *bit_num, uint16_t *code)
     }
     *code = (uint16_t)(tmp_val & ((1 << *bit_num) - 1));
 #endif
+
+    return 0;
 }
 
 int32_t read_bmp_to_rgb888(char *path, uint8_t **data, int32_t *width, int32_t *height)
@@ -662,6 +770,22 @@ void rgb888_dump_ppm(char *path, uint8_t *data, int32_t width, int32_t height)
     fclose(fp);
 }
 
+
+void print_block_double(double *in)
+{
+    int32_t i, j;
+    printf("\n");
+    for (i = 0; i < DCT_SIZE; i++)
+    {
+        for (j = 0; j < DCT_SIZE; j++)
+        {
+            printf("%8.3f ", in[i * DCT_SIZE + j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
 void print_block_u8(uint8_t *in)
 {
     int32_t i, j;
@@ -677,23 +801,79 @@ void print_block_u8(uint8_t *in)
     printf("\n");
 }
 
+void print_block_i8(int8_t *in)
+{
+    int32_t i, j;
+    printf("\n");
+    for (i = 0; i < DCT_SIZE; i++)
+    {
+        for (j = 0; j < DCT_SIZE; j++)
+        {
+            printf("%3d ", in[i * DCT_SIZE + j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+void print_block_i32(int32_t *in)
+{
+    int32_t i, j;
+    printf("\n");
+    for (i = 0; i < DCT_SIZE; i++)
+    {
+        for (j = 0; j < DCT_SIZE; j++)
+        {
+            printf("%3d ", in[i * DCT_SIZE + j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+void print_block_u8s3(uint8_t *in)
+{
+    int32_t i, j;
+    printf("\n");
+    for (i = 0; i < DCT_SIZE; i++)
+    {
+        for (j = 0; j < DCT_SIZE; j++)
+        {
+            printf("%3d ",  in[(i * DCT_SIZE + j) * 3 + 0]);
+            printf("%3d ",  in[(i * DCT_SIZE + j) * 3 + 1]);
+            printf("%3d  ", in[(i * DCT_SIZE + j) * 3 + 2]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+
 int main(int argc, const char **argv)
 {
-    JFIF_Header jfif;
-
-    int32_t w, h;
-    int32_t qt = 90;
+    int32_t w = 0, h = 0;
+    int32_t x = 0, y = 0;
+    int32_t last_y = 0, last_u = 0, last_v = 0;
+    int32_t qt = 100;
+    int32_t i = 0;
 
     uint8_t *rgb_data;
     uint8_t rgb_block[DCT_SIZE * DCT_SIZE * 3];
-    uint8_t y_block[DCT_SIZE * DCT_SIZE];
-    uint8_t u_block[DCT_SIZE * DCT_SIZE];
-    uint8_t v_block[DCT_SIZE * DCT_SIZE];
+    // uint8_t y_block[DCT_SIZE * DCT_SIZE];
+    // uint8_t u_block[DCT_SIZE * DCT_SIZE];
+    // uint8_t v_block[DCT_SIZE * DCT_SIZE];
+    int8_t y_block[DCT_SIZE * DCT_SIZE];
+    int8_t u_block[DCT_SIZE * DCT_SIZE];
+    int8_t v_block[DCT_SIZE * DCT_SIZE];
     double dct_block[DCT_SIZE * DCT_SIZE];
     int32_t qt_block[DCT_SIZE * DCT_SIZE];
     int32_t zigzag_block[DCT_SIZE * DCT_SIZE];
     uint8_t luma_table[DCT_SIZE * DCT_SIZE];
     uint8_t chroma_table[DCT_SIZE * DCT_SIZE];
+    uint8_t qt_table_tmp[DCT_SIZE * DCT_SIZE];
+
+    jfif_header jfif;
+    frame_header frame;
 
     coefficients huff_tree_luma_dc[HUFF_TREE_DC_LEN];
     coefficients huff_tree_chroma_dc[HUFF_TREE_DC_LEN];
@@ -705,16 +885,16 @@ int main(int argc, const char **argv)
     memset(huff_tree_chroma_ac, 0, sizeof(huff_tree_chroma_ac));
 
     // 生成huffman编码树
-    make_huffman_tree(default_ht_luma_dc_len,   default_ht_luma_dc,   HUFF_TREE_DC_LEN, huff_tree_luma_dc);
-    make_huffman_tree(default_ht_chroma_dc_len, default_ht_chroma_dc, HUFF_TREE_DC_LEN, huff_tree_chroma_dc);
-    make_huffman_tree(default_ht_luma_ac_len,   default_ht_luma_ac,   HUFF_TREE_AC_LEN, huff_tree_luma_ac);
-    make_huffman_tree(default_ht_chroma_ac_len, default_ht_chroma_ac, HUFF_TREE_AC_LEN, huff_tree_chroma_ac);
+    make_huffman_tree((uint8_t *)default_ht_luma_dc_len,   (uint8_t *)default_ht_luma_dc,   HUFF_TREE_DC_LEN, huff_tree_luma_dc);
+    make_huffman_tree((uint8_t *)default_ht_chroma_dc_len, (uint8_t *)default_ht_chroma_dc, HUFF_TREE_DC_LEN, huff_tree_chroma_dc);
+    make_huffman_tree((uint8_t *)default_ht_luma_ac_len,   (uint8_t *)default_ht_luma_ac,   HUFF_TREE_AC_LEN, huff_tree_luma_ac);
+    make_huffman_tree((uint8_t *)default_ht_chroma_ac_len, (uint8_t *)default_ht_chroma_ac, HUFF_TREE_AC_LEN, huff_tree_chroma_ac);
 
     // 生成量化参数表
     make_qt_table(qt, default_luma_table, luma_table);
     make_qt_table(qt, default_chroma_table, chroma_table);
-    print_block_u8(luma_table);
-    print_block_u8(chroma_table);
+    // print_block_u8(luma_table);
+    // print_block_u8(chroma_table);
 
     read_bmp_to_rgb888("test.bmp", &rgb_data, &w, &h);
     // rgb888_dump_ppm("out.ppm", rgb_data, w, h);
@@ -724,7 +904,7 @@ int main(int argc, const char **argv)
     jpeg_write_u16(sw16(0xFFD8));
 
     // 写JFIF
-    jfif.len = sw16(sizeof(JFIF_Header));
+    jfif.len = sw16(sizeof(jfif_header));
     strcpy(jfif.identifier, "JFIF");
     jfif.version = sw16(0x0102);
     jfif.units = 0x01; // 0x00-unspecified 0x01-dots_per_inch 0x02-dots_per_cm
@@ -733,28 +913,175 @@ int main(int argc, const char **argv)
     jfif.HthumbnailA = sw16(0);
     jfif.VthumbnailA = sw16(0);
     jpeg_write_u16(sw16(0xFFE0));
-    jpeg_write_file(&jfif, sizeof(JFIF_Header));
+    jpeg_write_file((uint8_t *)&jfif, sizeof(jfif_header));
 
     // 写量化表
+    // 亮度量化表
     jpeg_write_u16(sw16(0xFFDB));
     jpeg_write_u16(sw16(2+1+64));
     jpeg_write_u8(0x00); // AAAABBBB(bin), AAAA = 精度(0:8位，1:16位) BBBB = 量化表ID（最多4个）
-    jpeg_write_file(luma_table, sizeof(luma_table)); // 亮度量化表
-
+    for (i = 0; i < DCT_SIZE * DCT_SIZE; i++)
+    {
+        qt_table_tmp[zigzag_table[i]] = luma_table[i];
+    }
+    jpeg_write_file(qt_table_tmp, sizeof(qt_table_tmp));
+    // 色度量化表
     jpeg_write_u16(sw16(0xFFDB));
     jpeg_write_u16(sw16(2+1+64));
     jpeg_write_u8(0x01); // AAAABBBB(bin), AAAA = 精度(0:8位，1:16位) BBBB = 量化表ID（最多4个）
-    jpeg_write_file(chroma_table, sizeof(chroma_table)); // 色度量化表
+    for (i = 0; i < DCT_SIZE * DCT_SIZE; i++)
+    {
+        qt_table_tmp[zigzag_table[i]] = chroma_table[i];
+    }
+    jpeg_write_file(qt_table_tmp, sizeof(qt_table_tmp));
 
-    // TODO 写图像开始标记
+    // 写图像开始标记
+    jpeg_write_u16(sw16(0xFFC0));
+    jpeg_write_u16(sw16(2+sizeof(frame_header)));
+    frame.precision = 8;
+    frame.height = sw16(h);
+    frame.width = sw16(w);
+    frame.component_num = 3;
+    // 这里采用最简单的YUV444格式，所以这三个分量的采样因子都是0x11
+    // 假设采用YUV420格式，这三个分量的采样因子分别是0x22，0x11，0x11
+    // 亮度分量
+    frame.component[0].id = 1;
+    frame.component[0].sampling_factors = 0x11;
+    frame.component[0].qt_table_id = 0;
+    // 色度分量
+    frame.component[1].id = 2;
+    frame.component[1].sampling_factors = 0x11;
+    frame.component[1].qt_table_id = 1;
+    // 色度分量
+    frame.component[2].id = 3;
+    frame.component[2].sampling_factors = 0x11;
+    frame.component[2].qt_table_id = 1;
+    jpeg_write_file((uint8_t *)&frame, sizeof(frame_header));
 
+    // 写huffman表，AC、DC表的ID分别从0开始累加
+    // 亮度DC表
+    jpeg_write_u16(sw16(0xFFC4));
+    jpeg_write_u16(sw16(2+1+16+sizeof(default_ht_luma_dc)));
+    jpeg_write_u8(0x00); // AAAABBBB(bin), AAAA = 类型(0:DC，1:AC) BBBB = 表ID
+    jpeg_write_file((uint8_t *)default_ht_luma_dc_len, sizeof(default_ht_luma_dc_len));
+    jpeg_write_file((uint8_t *)default_ht_luma_dc, sizeof(default_ht_luma_dc));
+    // 亮度AC表
+    jpeg_write_u16(sw16(0xFFC4));
+    jpeg_write_u16(sw16(2+1+16+sizeof(default_ht_luma_ac)));
+    jpeg_write_u8(0x10); // AAAABBBB(bin), AAAA = 类型(0:DC，1:AC) BBBB = 表ID
+    jpeg_write_file((uint8_t *)default_ht_luma_ac_len, sizeof(default_ht_luma_ac_len));
+    jpeg_write_file((uint8_t *)default_ht_luma_ac, sizeof(default_ht_luma_ac));
+    // 色度DC表
+    jpeg_write_u16(sw16(0xFFC4));
+    jpeg_write_u16(sw16(2+1+16+sizeof(default_ht_chroma_dc)));
+    jpeg_write_u8(0x01); // AAAABBBB(bin), AAAA = 类型(0:DC，1:AC) BBBB = 表ID
+    jpeg_write_file((uint8_t *)default_ht_chroma_dc_len, sizeof(default_ht_chroma_dc_len));
+    jpeg_write_file((uint8_t *)default_ht_chroma_dc, sizeof(default_ht_chroma_dc));
+    // 色度AC表
+    jpeg_write_u16(sw16(0xFFC4));
+    jpeg_write_u16(sw16(2+1+16+sizeof(default_ht_chroma_ac)));
+    jpeg_write_u8(0x11); // AAAABBBB(bin), AAAA = 类型(0:DC，1:AC) BBBB = 表ID
+    jpeg_write_file((uint8_t *)default_ht_chroma_ac_len, sizeof(default_ht_chroma_ac_len));
+    jpeg_write_file((uint8_t *)default_ht_chroma_ac, sizeof(default_ht_chroma_ac));
 
-    // TODO 写huffman表
+    // 写扫描开始标记
+    jpeg_write_u16(sw16(0xFFDA));
+    jpeg_write_u16(sw16(2+1+3*2+3));
+    jpeg_write_u8(0x03); // 颜色分量数目 1-灰度图 3-YUV 4-CMYK
+    // 颜色分量信息，有几种颜色就要几次
+    jpeg_write_u8(0x01); // 颜色分量ID
+    jpeg_write_u8(0x00); // 高4位直流分量huffman表ID，低4位交流分量huffman表ID
+    jpeg_write_u8(0x02); // 颜色分量ID
+    jpeg_write_u8(0x11); // 高4位直流分量huffman表ID，低4位交流分量huffman表ID
+    jpeg_write_u8(0x03); // 颜色分量ID
+    jpeg_write_u8(0x11); // 高4位直流分量huffman表ID，低4位交流分量huffman表ID
+    jpeg_write_u8(0x00);// 谱选择开始：1个字节，固定值0x00
+    jpeg_write_u8(0x3F);// 谱选择结束：1个字节，固定值0x3F
+    jpeg_write_u8(0x00);// 谱选择：1个字节，固定值0x00
 
+    // 测试用，打印某一块的数据
+    // if (0)
+    // {
+    //     read_block(rgb_data, rgb_block, w, h, 0, 0);
+    //     print_block_u8s3(rgb_block);
 
-    // TODO jpeg数据写入
+    //     block_rgb_to_yuv444(rgb_block, y_block, u_block, v_block);
+    //     print_block_i8(y_block);
+    //     print_block_i8(u_block);
+    //     print_block_i8(v_block);
 
+    //     block_dct(y_block, dct_block);
+    //     block_quantization(luma_table, dct_block, qt_block);
+    //     block_zigzag(qt_block, zigzag_block);
+    //     print_block_double(dct_block);
+    //     print_block_i32(qt_block);
+    //     print_block_i32(zigzag_block);
 
+    //     block_dct(u_block, dct_block);
+    //     block_quantization(chroma_table, dct_block, qt_block);
+    //     block_zigzag(qt_block, zigzag_block);
+    //     print_block_u8(u_block);
+    //     print_block_double(dct_block);
+    //     print_block_i32(zigzag_block);
+
+    //     block_dct(v_block, dct_block);
+    //     block_quantization(chroma_table, dct_block, qt_block);
+    //     block_zigzag(qt_block, zigzag_block);
+    //     print_block_u8(v_block);
+    //     print_block_double(dct_block);
+    //     print_block_i32(zigzag_block);
+    // }
+
+    // 写入真正的图像数据
+    for(y = 0; y < h; y += 8)
+    {
+        for(x = 0; x < w; x += 8)
+        {
+            // printf("\ncoordinate %d %d\n", x, y);
+
+            read_block(rgb_data, rgb_block, w, h, x, y);
+            // print_block_u8s3(rgb_block);
+
+            block_rgb_to_yuv444(rgb_block, y_block, u_block, v_block);
+            // printf("yuv block\n");
+            // print_block_i8(y_block);
+            // print_block_i8(u_block);
+            // print_block_i8(v_block);
+
+            // printf("y block\n");
+            block_dct(y_block, dct_block);
+            // print_block_double(dct_block);
+            block_quantization(luma_table, dct_block, qt_block);
+            // print_block_i32(qt_block);
+            block_zigzag(qt_block, zigzag_block);
+            // print_block_i32(zigzag_block);
+            block_encode(zigzag_block, &last_y, huff_tree_luma_dc, huff_tree_luma_ac);
+
+            // printf("u block\n");
+            block_dct(u_block, dct_block);
+            // print_block_double(dct_block);
+            block_quantization(chroma_table, dct_block, qt_block);
+            // print_block_i32(qt_block);
+            block_zigzag(qt_block, zigzag_block);
+            // print_block_i32(zigzag_block);
+            block_encode(zigzag_block, &last_u, huff_tree_chroma_dc, huff_tree_chroma_ac);
+
+            // printf("v block\n");
+            block_dct(v_block, dct_block);
+            // print_block_double(dct_block);
+            block_quantization(chroma_table, dct_block, qt_block);
+            // print_block_i32(qt_block);
+            block_zigzag(qt_block, zigzag_block);
+            // print_block_i32(zigzag_block);
+            block_encode(zigzag_block, &last_v, huff_tree_chroma_dc, huff_tree_chroma_ac);
+        }
+    }
+
+    // 清除缓存
+    jpeg_write_bits(0, 0, 1);
+
+    // 写入结束标记
+    jpeg_write_u16(sw16(0xFFD9));
 
     free(rgb_data);
     fclose(fp_jpeg);
