@@ -360,12 +360,9 @@ int32_t block_rgb_to_yuv444(const uint8_t *block, int8_t *y, int8_t *u, int8_t *
             luma = 0.299f   * r + 0.587f  * g + 0.114f  * b - 128;
             cb   = -0.1687f * r - 0.3313f * g + 0.5f    * b;
             cr   = 0.5f     * r - 0.4187f * g - 0.0813f * b;
-            // y[block_offset] = (int8_t)round(luma);
-            // u[block_offset] = (int8_t)round(cb);
-            // v[block_offset] = (int8_t)round(cr);
-            y[block_offset] = (int8_t)luma;
-            u[block_offset] = (int8_t)cb;
-            v[block_offset] = (int8_t)cr;
+            y[block_offset] = (int8_t)round(luma);
+            u[block_offset] = (int8_t)round(cb);
+            v[block_offset] = (int8_t)round(cr);
         }
     }
     return 0;
@@ -476,9 +473,16 @@ int32_t block_encode(int32_t *in, int32_t *last_dc, coefficients *dc, coefficien
     // 直流
     dc_delta = in[0] - *last_dc;
     *last_dc = in[0];
-    get_val_bit_and_code(dc_delta, &bit_num, &code);
-    jpeg_write_bits(dc[bit_num].code_word, dc[bit_num].code_length, 0);
-    jpeg_write_bits(code, bit_num, 0);
+    if (dc_delta != 0)
+    {
+        get_val_bit_and_code(dc_delta, &bit_num, &code);
+        jpeg_write_bits(dc[bit_num].code_word, dc[bit_num].code_length, 0);
+        jpeg_write_bits(code, bit_num, 0);
+    }
+    else
+    {
+        jpeg_write_bits(dc[0].code_word, dc[0].code_length, 0);
+    }
 
     // 交流
     for (i = 63; i > 0; i--)
