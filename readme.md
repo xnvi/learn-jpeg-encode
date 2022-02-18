@@ -42,10 +42,11 @@ DCT±ä»»µÄ¹Ø¼üÊÇ£¬Ëü¼ÙÉèÈÎºÎÊý×ÖÐÅºÅ¶¼¿ÉÒÔÓÃÓàÏÒº¯ÊýµÄ×éºÏÀ´ÖØ½¨¡£
 »»¾ä»°ËµÈÎºÎ8*8µÄÍ¼Ïñ¶¼¿ÉÒÔÓÉÕâ64·ùÍ¼Ïñ³ËÒÔ²»Í¬µÄÏµÊý²¢µþ¼Ó¶øµÃµ½¡£
 ![](./doc/dct_element.png)
 
-ÈçºÎµÃµ½Õâ·ùÍ¼Ïñ£¿
+ÈçºÎµÃµ½Õâ·ùÍ¼Ïñ£¿£¨ÕâÒ»¶ÎÊÇÎÒ×Ô¼º×Ü½áµÄ£¬ÔÝÎ´ÕÒµ½Ïà¹ØÎÄÕÂ£¬Êµ¼Ê°´Õâ¸ö·½·¨Éú³ÉµÄ½á¹ûÓÐ±È½Ï´óµÄÎó²î£¬Ï£ÍûÓÐÊýÑ§´óÀÐÖ¸µãÒ»ÏÂ£©
 ÉèXijÎªÒ»¸ö8*8¾ØÕó£¬ÆäÖÐij±íÊ¾ÐÐÁÐÏÂ±ê
 ½«µÚijÐÐÁÐµÄÔªËØÖÃÎª1£¬ÆäÓàÔªËØÖÃ0£¬¶ÔµÃµ½Õâ¸ö¾ØÕó½øÐÐDCT×ª»»£¬¾Í¿ÉµÃµ½¶ÔÓ¦µÄÒ»¸öÍ¼Ïñ
 ÖØ¸´ÉÏÊö¹ý³ÌÖ±µ½Íê³ÉÈ«²¿64¸öÔªËØ¶ÔÓ¦µÄÍ¼Ïñ
+![](./doc/dct_basis_functions.jpg)
 
 À´¿´Õâ¸öÊµ¼ÊÑÝÊ¾£¬ÓÒ±ßÊÇÔ­Ê¼Í¼Ïñ£¬ÖÐ¼äÊÇÔ­Ê¼Í¼Ïñ³ËÒÔÏµÊýºóµÄÍ¼Ïñ£¬×ó±ßÊÇ×îÖÕµþ¼ÓµÄ½á¹û
 ![](./doc/dct.gif)
@@ -345,10 +346,11 @@ DCT×ª»»²¢Á¿»¯ºóµÄµÚÒ»¸öÊý¾ÝÊÇÖ±Á÷·ÖÁ¿£¬Ê¹ÓÃÖ±Á÷±àÂë±í½øÐÐ±àÂë£¬ÆäÓàµÄ63¸öÊý¾ÝÊÇ½
 # JPEG ÎÄ¼þ¸ñÊ½
 Ïà¹ØÎÄÕÂÓÐºÜ¶à£¬ÕâÀï¸ø³öÒ»Æª¹©²Î¿¼£¬Èç¹ûÓÐ²»Àí½âµÄµØ·½ÅäºÏ JPEGsnoop Êµ¼Ê¿´¼¸ÕÅJPEGÍ¼Æ¬
 https://www.cnblogs.com/sddai/p/5666924.html
-×îºó¸ñÊ½ÒªÇó°ÑÊý¾ÝÐ´ÈëÎÄ¼þ£¬ÕâÑùÒ»ÕÅJPEGÍ¼Æ¬¾ÍÍê³ÉÁË¡£
-ÐèÒª×¢ÒâµÄÊÇ£¬0xFFDB×Ö¶Î±£´æµÄÁ¿»¯±íÊÇZ×ÖÉ¨ÃèºóµÄÁ¿»¯±í£¬²»ÊÇÔ­Ê¼Á¿»¯±í¡££¨ÕâÒ»µãÎÒÔÝÊ±Ã»ÓÐÕÒµ½Ïà¹ØµÄËµÃ÷ÎÄÕÂ£©
-Ò»°ãapp0ÓÃÀ´±£´æJFIF£¬app1ÓÃµÄ±£´æexif£¬ÆäÓàµÄ×Ô¶¨Òå
-Êµ¼Ê·¢ÏÖÈí¼þÍ¨¹ý²éÕÒappxÀïÃæµÄÇ°¼¸¸ö×Ö½ÚÊÇjfif»¹ÊÇexifÀ´ÅÐ¶ÏËüµÄ¾ßÌåÄÚÈÝ
+Õâ²¿·ÖÖ»Òª×ñÑ­¹æÔòÐ´ÈëÊý¾Ý¾ÍÐÐ£¬ÕâÑùÒ»ÕÅJPEGÍ¼Æ¬¾ÍÍê³ÉÁË¡£
+¼òµ¥²¹³äËµÃ÷¼¸µã£º
+* 0xFFDB×Ö¶Î±£´æµÄÁ¿»¯±íÊÇZ×ÖÉ¨ÃèºóµÄÁ¿»¯±í£¬²»ÊÇÔ­Ê¼Á¿»¯±í¡££¨ÕâÒ»µãÎÒÔÝÊ±Ã»ÓÐÕÒµ½Ïà¹ØµÄËµÃ÷ÎÄÕÂ£©
+* Ò»°ãapp0ÓÃÀ´±£´æJFIF£¬app1ÓÃµÄ±£´æexif£¬ÆäÓàµÄ×Ô¶¨Òå¡£Êµ¼Ê²âÊÔ·¢ÏÖÒ»°ã¶¼ÊÇÍ¨¹ý²éÕÒappxÀïÃæµÄÇ°¼¸¸ö×Ö½ÚÊÇjfif»¹ÊÇexifÀ´ÅÐ¶ÏËüµÄ¾ßÌåÄÚÈÝ
+* ±àÂë¹ý³ÌÖÐ£¬Èç¹ûÓöµ½0xFF£¬ÒªÔÚºóÃæÔÙ²¹³äÒ»¸ö0x00£¬½âÂëÊ±ÔÙ°Ñ0x00È¥µô
 
 
 # ²Î¿¼×ÊÁÏ
